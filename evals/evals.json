@@ -1,0 +1,30 @@
+{
+  "skill_name": "unreal-360-render",
+  "note": "Example prompts the skill should handle. They were not run through the skill-creator eval harness; the pipeline itself was verified by hand (see README 'What was tested').",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I have a flythrough Level Sequence (/Game/Cinematics/LS_Canyon, camera is called FlightCamera) in the level /Game/Maps/Canyon of my project D:/Proj/Proj.uproject. Make me a short low-res 360 video of it that I can watch on a Quest headset.",
+      "expected_output": "Runs doctor, setup with --source-sequence/--source-binding, calib (identity OK), a few stills to sanity-check, then clip + video; reports an mp4 tagged equirectangular, mentions the calibration result and the black-frame check, and offers the local viewer.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "my snow post-process flakes look totally random frame to frame when I render a panorama sequence from unreal, the effect uses a Time node. how do i get falling flakes that move smoothly across frames?",
+      "expected_output": "Explains that material Time is wall-clock, uses patch-time on the flake material (backup, MPC clock) and re-renders with the render clock (or --fixed-step as the alternative), and suggests measuring steadiness; warns that Time inside material functions and Niagara are not covered.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "just give me a 2048 wide equirect still of my level /Game/Maps/Atrium from the spot where the PlayerStart is, UE 5.8",
+      "expected_output": "Uses setup with --source-actor PlayerStart (or --location), calib at a frame with open space, then stills --frames 0 --width 2048 with setup --cube 1024 (noting that 1024 faces are untested), checks views, reports the PNG path.",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "ue360 render came out all black",
+      "expected_output": "Checks the log for 'Failed to compile Material' (sampler type / equirect material), re-runs setup, verifies a rig and render target exist, reruns calib; does not blame lighting.",
+      "files": []
+    }
+  ]
+}

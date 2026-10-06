@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+Saved/
+*.hdr
+*.mp4
+*.webm
+.DS_Store

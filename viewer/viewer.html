@@ -1,0 +1,94 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>360 viewer</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0b0d12; overflow: hidden; font: 13px system-ui, sans-serif; color: #dfe6f1; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+  canvas.drag { cursor: grabbing; }
+  #hud { position: fixed; left: 12px; bottom: 12px; padding: 8px 12px; border-radius: 8px; background: rgba(11, 13, 18, .72); line-height: 1.5; }
+  #hud b { color: #fff; }
+  #err { position: fixed; inset: 0; display: none; place-items: center; text-align: center; padding: 24px; }
+</style>
+<canvas id="c"></canvas>
+<div id="hud"><b id="name"></b><br>drag = look · wheel = zoom · space = pause · A = auto-rotate · R = reset · F = fullscreen</div>
+<div id="err"></div>
+<script>
+// Equirectangular 360 viewer, no libraries. Video/image must come from the same origin (serve this folder over http://localhost,
+// see `ue360.py view`) - WebGL refuses cross-origin / file:// media. ?src=still_f03015.png picks another file.
+const src = new URLSearchParams(location.search).get('src') || 'demo.mp4';
+document.getElementById('name').textContent = src;
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl', { antialias: false });
+const fail = (m) => { const e = document.getElementById('err'); e.style.display = 'grid'; e.textContent = m; };
+if (!gl) fail('WebGL is not available in this browser.');
+
+const vs = `attribute vec2 p; void main(){ gl_Position = vec4(p, 0., 1.); }`;
+const fs = `precision highp float;
+uniform sampler2D tex; uniform vec2 res; uniform float yaw, pitch, fov;
+void main(){
+  vec2 q = (gl_FragCoord.xy * 2.0 - res) / res.y;               // y in -1..1, x in -aspect..aspect
+  vec3 d = normalize(vec3(1.0 / tan(fov * 0.5), q.x, q.y));      // x forward, y right, z up (Unreal's axes)
+  float cp = cos(pitch), sp = sin(pitch), cy = cos(yaw), sy = sin(yaw);
+  d = vec3(d.x * cp - d.z * sp, d.y, d.x * sp + d.z * cp);
+  d = vec3(d.x * cy - d.y * sy, d.x * sy + d.y * cy, d.z);
+  float lon = atan(d.y, d.x), lat = asin(clamp(d.z, -1.0, 1.0));
+  gl_FragColor = vec4(texture2D(tex, vec2(lon / 6.2831853 + 0.5, 0.5 - lat / 3.14159265)).rgb, 1.0);
+}`;
+function sh(type, code) { const s = gl.createShader(type); gl.shaderSource(s, code); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) fail(gl.getShaderInfoLog(s)); return s; }
+const prog = gl.createProgram();
+gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fs));
+gl.linkProgram(prog); gl.useProgram(prog);
+gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+const loc = gl.getAttribLocation(prog, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+const U = (n) => gl.getUniformLocation(prog, n);
+
+const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+let media, isVideo = /\.(mp4|webm|mov)$/i.test(src), ready = false;
+if (isVideo) {
+  media = document.createElement('video');
+  Object.assign(media, { src, loop: true, muted: true, playsInline: true, autoplay: true, crossOrigin: 'anonymous' });
+  media.addEventListener('loadeddata', () => { ready = true; media.play().catch(() => {}); });
+  media.addEventListener('error', () => fail('Could not load ' + src + ' - open this page through `ue360.py view` (http://localhost), not as a file.'));
+} else {
+  media = new Image(); media.crossOrigin = 'anonymous';
+  media.onload = () => { ready = true; upload(); };
+  media.onerror = () => fail('Could not load ' + src + ' - open this page through `ue360.py view` (http://localhost), not as a file.');
+  media.src = src;
+}
+function upload() { gl.bindTexture(gl.TEXTURE_2D, tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, media); }
+
+let yaw = 0, pitch = 0, fov = 1.45, auto = true, drag = null, lastT = performance.now();
+const clampPitch = () => { pitch = Math.max(-1.5, Math.min(1.5, pitch)); };
+canvas.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); canvas.classList.add('drag'); auto = false; });
+canvas.addEventListener('pointermove', (e) => { if (!drag) return; const k = fov / canvas.clientHeight;
+  yaw -= (e.clientX - drag.x) * k; pitch += (e.clientY - drag.y) * k; clampPitch(); drag = { x: e.clientX, y: e.clientY }; });
+canvas.addEventListener('pointerup', () => { drag = null; canvas.classList.remove('drag'); });
+canvas.addEventListener('wheel', (e) => { e.preventDefault(); fov = Math.max(0.5, Math.min(2.1, fov * Math.exp(e.deltaY * 0.001))); }, { passive: false });
+addEventListener('keydown', (e) => {
+  if (e.code === 'Space') { e.preventDefault(); if (isVideo) (media.paused ? media.play() : media.pause()); }
+  if (e.key === 'a' || e.key === 'A') auto = !auto;
+  if (e.key === 'r' || e.key === 'R') { yaw = 0; pitch = 0; fov = 1.45; }
+  if (e.key === 'f' || e.key === 'F') { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); }
+});
+
+function frame(t) {
+  const dt = (t - lastT) / 1000; lastT = t;
+  const dpr = Math.min(devicePixelRatio || 1, 2), w = Math.round(canvas.clientWidth * dpr), h = Math.round(canvas.clientHeight * dpr);
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  gl.viewport(0, 0, w, h);
+  if (auto && !drag) yaw += dt * 0.12;
+  if (ready) {
+    if (isVideo && media.readyState >= 2) upload();
+    gl.uniform2f(U('res'), w, h); gl.uniform1f(U('yaw'), yaw); gl.uniform1f(U('pitch'), pitch); gl.uniform1f(U('fov'), fov);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
