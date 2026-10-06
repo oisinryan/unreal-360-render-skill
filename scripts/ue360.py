@@ -744,6 +744,9 @@ def cmd_clip(args):
 
 
 def cmd_pick(args):
+    """Chooses the cubemap axis mapping from the calibration render. Identity is the known-correct mapping for UE 5.8 (verified on several
+    projects), so another candidate must beat it clearly: a hidden sphere (typically 'down', buried under the ground) would otherwise let
+    near-ties be decided by sort order."""
     need_imaging()
     project = find_project(args)
     raw = out_dir(project, args) / 'raw'
@@ -752,22 +755,29 @@ def cmd_pick(args):
     for i, m in enumerate(cands):
         found = marker_directions(read_hdr(raw / ('cand_%02d.hdr' % i)))
         scored.append((marker_score(found), i, found))
-    scored.sort(key=lambda t: -t[0])
-    for sc, i, _ in scored[:3]:
+    ident_i = next(i for i, m in enumerate(cands) if m == [1, 0, 0, 0, 1, 0, 0, 0, 1])
+    ident = next(t for t in scored if t[1] == ident_i)
+    best = max(scored, key=lambda t: t[0])
+    chosen = best if best[0] > ident[0] + 0.75 else ident
+    for sc, i, _ in sorted(scored, key=lambda t: -t[0])[:3]:
         say('  cand %02d  score %.2f / %d  M=%s' % (i, sc, len(MARKERS), cands[i]))
-    sc, best, found = scored[0]
-    say('  sphere directions in the best candidate (lon/lat deg; expected 0/0, 90/0, 180/0, -90/0, 0/-90): ' + ', '.join(
+    sc, ci, found = chosen
+    errs = {n: (angdist(f[0], f[1], lon, lat) if f[0] is not None else None) for (n, f), (_, lon, lat, _) in zip(found.items(), MARKERS)}
+    say('  sphere directions in the chosen candidate (lon/lat; expected 0/0, 90/0, 180/0, -90/0, 0/-90): ' + ', '.join(
         '%s=%s' % (n, ('%.0f/%.0f' % (f[0], f[1])) if f[0] is not None else 'NOT FOUND') for n, f in found.items()))
-    missing = [n for n, f in found.items() if f[0] is None]
-    if sc < 3.0 or len(missing) > 1:
-        die('calibration inconclusive (score %.2f, missing: %s). The spheres were probably hidden by geometry or fog: pick a --frame with '
-            'open space around the rig, or inspect a still with `ue360.py views`. Axes left unchanged.' % (sc, ', '.join(missing) or 'none'), 4)
-    ident = [1, 0, 0, 0, 1, 0, 0, 0, 1]
-    if cands[best] == ident:
-        say('axis mapping OK: identity (each sphere is where it should be, score %.2f / %d)' % (sc, len(MARKERS)))
+    good = [n for n, e in errs.items() if e is not None and e < 15.0]
+    off = [n for n in errs if n not in good]
+    if len(good) < 3:
+        die('calibration inconclusive: only %d of %d spheres were found near their expected direction (%s). They were probably hidden by '
+            'geometry or fog: calibrate at a frame with open space around the rig (--frame) and look at `ue360.py views`. Axes left unchanged.'
+            % (len(good), len(MARKERS), ', '.join(n + ('=hidden' if errs[n] is None else '=%.0f deg off' % errs[n]) for n in off)), 4)
+    if cands[ci] == [1, 0, 0, 0, 1, 0, 0, 0, 1]:
+        say('axis mapping OK: identity; %d of %d spheres confirmed within 15 deg%s' % (
+            len(good), len(MARKERS), '' if not off else ' (not confirmed: %s - usually hidden below the ground; other axes agree)' % ', '.join(off)))
     else:
-        say('NOTE: best mapping is %s, not identity - using it for later renders (score %.2f). Check a still with `ue360.py views`.' % (cands[best], sc))
-    save_session(project, axes=cands[best])
+        say('NOTE: mapping %s beats identity clearly (score %.2f vs %.2f) - using it for later renders. Check a still with `ue360.py views`.' % (
+            cands[ci], sc, ident[0]))
+    save_session(project, axes=cands[ci])
 
 
 def cmd_png(args):

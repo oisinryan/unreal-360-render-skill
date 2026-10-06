@@ -42,7 +42,7 @@ The calibration spheres sit on the rig's six axes, up to 75–150 m out (the cap
 
 ## Verify before you report success
 A render that "finished" can still be wrong. Check, and tell the user what you checked:
-1. `calib` prints `axis mapping OK: identity` and each sphere direction within ~10° of expected. Anything else: see `references/gotchas.md`.
+1. `calib` prints `axis mapping OK: identity; N of 5 spheres confirmed within 15 deg`. 4 of 5 is normal when the `down` sphere is buried under the ground (it says which one is unconfirmed); fewer than 3 aborts without changing anything. If it says another mapping beats identity, look at `views` before trusting it. See `references/gotchas.md`.
 2. `check` reports 0 black frames. All-black output almost always means `M_Equirect360` failed to compile (the CLI greps `Failed to compile Material` from the log) or the rig has no render target — re-run `setup`.
 3. Open `views NAME.png`: the horizon runs through the middle row, the "front" tile looks like a normal camera view from the rig, no hard seams at ±180°.
 4. For video, `ffmpeg -i file.mp4` should list `spherical: equirectangular`; the viewer should play it.

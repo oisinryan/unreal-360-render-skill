@@ -55,7 +55,7 @@ Measured on the demo's moving-stripe post-process (frame-to-frame shift of the s
 
 | Check | Result |
 |---|---|
-| Fresh minimal UE 5.8 project: `testscene` → `patch-time` → `setup` → `calib` → `stills` → `clip` → `video` → `view` | all pass; identity axis mapping, 4.34 / 5 calibration score |
+| Fresh minimal UE 5.8 project (twice, the second time from the installed skill copy): `testscene` → `patch-time` → `setup` → `calib` → `stills` → `clip` → `video` → `view` | all pass; identity axis mapping (5 of 5 spheres confirmed the first time, 4 of 5 the second — the `down` sphere hid under the ground) |
 | Rig with yaw 30°, pitch 25°, roll 15° (fixed location) | calibrates 4.65 / 5 |
 | Render clock vs none vs `--fixed-step` | steady / steady / jittery (table above) |
 | Skill folder and project paths containing spaces | work (scripts are copied to a space-free temp folder when needed) |
